@@ -1,0 +1,246 @@
+---
+title: "Regression Models Course Project"
+author: "Vineet"
+date: "`r format(Sys.Date(), '%d %B %Y')`"
+output: 
+    html_document:
+        toc: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Executive Summary
+
+In this report, we will explore the relationship between a set of variables and miles per gallon(MPG). We are particularly interested in the following two questions:
+
+-   "Is an automatic or manual transmission better for MPG"
+
+-   "Quantify the MPG difference between automatic and manual transmissions"
+
+## Data
+
+We will be using the mtcars data set. The data was extracted from the 1974 Motor Trend US magazine, and comprises fuel consumption and 10 aspects of automobile design and performance for 32 automobiles (1973--74 models).
+
+```{r load}
+library(datasets)
+data(mtcars)
+```
+
+A data frame with 32 observations on 11 (numeric) variables.
+
+[, 1] mpg Miles/(US) gallon
+
+[, 2] cyl Number of cylinders
+
+[, 3] disp Displacement (cu.in.)
+
+[, 4] hp Gross horsepower
+
+[, 5] drat Rear axle ratio
+
+[, 6] wt Weight (1000 lbs)
+
+[, 7] qsec 1/4 mile time
+
+[, 8] vs Engine (0 = V-shaped, 1 = straight)
+
+[, 9] am Transmission (0 = automatic, 1 = manual)
+
+[,10] gear Number of forward gears
+
+[,11] carb Number of carburetors
+
+## Exploratory Data Analysis
+
+```{r struct}
+str(mtcars)
+```
+
+Copying data to another data frame. Putting transmission data into a new column as a factor and creating separate data objects for the different transmission types
+
+```{r trans}
+mtcars2 <- mtcars
+mtcars2$trans <- mtcars$am
+mtcars2[mtcars2$trans == 0,]$trans <- "Automatic"
+mtcars2[mtcars2$trans == 1,]$trans <- "Manual"
+mtcars2$trans <- as.factor(mtcars2$trans)
+
+drop <- c("am")
+mtcars2 <- mtcars2[, !(names(mtcars2) %in% drop)]
+
+auto <- mtcars2[mtcars2$trans == "Automatic",]
+manual <- mtcars2[mtcars2$trans == "Manual",]
+```
+
+Looking at Automatic Cars
+
+```{r autoSumm}
+summary(auto)
+```
+
+There are 19 automatic cars with a mean mpg = 17.15
+
+Looking at Manual Cars
+
+```{r manualSumm}
+summary(manual)
+```
+
+There are 13 manual cars with a mean mpg = 24.39
+
+#### Is an automatic or manual transmission better for MPG?
+
+By direct comparison we can see that, on average, Manual cars have better mileage at 24.39 than Automatic cars at 17.15
+
+Later on, we will build linear models, with other variables that affect MPG, to understand if the above comparison still holds true.
+
+#### Quantify the MPG difference between automatic and manual transmissions
+
+```{r quantify}
+library(ggplot2)
+g <- ggplot(data = mtcars2, aes(x = trans, y = mpg, fill = trans))
+g <- g + geom_boxplot() + geom_jitter()
+g <- g + xlab("Transmission") + ylab("Miles Per Gallon (MPG)") + 
+    ggtitle("MPG difference by Transmission type")
+g
+```
+
+By comparing the boxes, we can say that more than 50% cars with Manual transmission have a better mileage than 75% of the Automatic Cars
+
+## Hypothesis Testing
+
+To check if the difference between mpg of Automatic and Manual cars is significant or not, we will perform the t-test
+
+```{r hypothesis}
+t.test(auto$mpg, manual$mpg)
+```
+
+Taking alpha (significance level) = 0.05 and with a p-value \< aplha, we reject the null hypothesis. Thus, there is a significant difference between mpg of automatic and manual cars.
+
+## Regression Modelling
+
+### Strategy for Model Selection
+
+Since the dependent variable, i.e. mpg, is continuous, we will perform linear regression.
+
+Firstly, we will fit the linear model with mpg as the dependent variable and just transmission type as the predictor.
+
+Later on we will include more variables to the model to understand how that impacts the results.
+
+### Model 1
+
+```{r model1}
+fit1 <- lm(mpg ~ trans, data = mtcars2)
+summary(fit1)
+```
+
+With the R-squared value of \~0.36, this model explains 36% of the total variability in mpg. So, there's scope to improve this model.
+
+#### Interpreting the coefficients
+
+The Intercept refers to the Automatic cars. The Estimate of \~17.15 tells us that on average an Automatic car will give you a mileage of 17.15 mpg.
+
+The 'transManual' coefficient tells us the increase/decrease in mileage of Manual transmission cars as compared to the Automatic cars (Intercept). Thus the Estimate of \~7.25 indicates that a Manual transmission car, on average, gives you 7.25 mpg more mileage than an Automatic car
+
+Now, building a model with all variables to investigate the combined effects on regression
+
+### Model with all Variables
+
+```{r modealAll}
+fit_all <- lm(mpg ~ . , data = mtcars2)
+summary(fit_all)
+```
+
+#### Interpreting the coefficients
+
+This model explains \~86% of the variability but it seems none of the variables are significant. This could be due to multicollinearity
+
+#### Diagnostics
+
+Lets check the Variance Inflation Factors
+
+```{r vif}
+library(car)
+vif(fit_all)
+```
+
+Many variables like cyl, disp, wt have a very high VIF indicating that they are highly correlated with other variables in the model. So lets check the correlation between all variables
+
+```{r corr}
+library(corrplot)
+corrplot(cor(mtcars))
+```
+
+As expected, few of the variables like cyl, disp, wt are highly correlated not only with mpg but also with each other. Now, we can't just remove all or many of them as that would result in bias. We also can't keep all of them since we know they are inflating the variability to a large extent.
+
+Lets build on top of Model 1 and create a couple of models by adding a few independent variables in iterations
+
+### Models 2 & 3
+
+Model 2: Lets include some variables with very high correlation to mpg but sacrifice 1 of them having great correlation with another variable among them. Doing this to reduce the variance inflation due to multicollinearity we observed.
+
+Picking cyl, disp, hp and wt. From the correlation matrix we can see that cyl has greater correlation with disp than hp or wt. Lets keep cyl but sacrifice disp.
+
+```{r model2}
+fit2 <- lm(mpg ~ trans + cyl + hp + wt, mtcars2)
+summary(fit2)
+```
+
+Model 3: Lets add a few more variables that have a good correlation with mpg
+
+```{r model3}
+fit3 <- lm(mpg ~ trans + cyl + hp + wt + drat + vs, data = mtcars2)
+summary(fit3)
+```
+
+#### Interpreting the coefficients
+
+Both models explain around 85% variability in mpg. Wt variable seems to be of significance in both the models. The 2 variables added in model 3 aren't significant according to the model.
+
+#### Diagnostics
+
+```{r anova}
+vif(fit2)
+vif(fit3)
+anova(fit1, fit2, fit3)
+```
+
+### Model Selection
+
+From above results we can see that Model 2 is a significantly better fit over Model 1 whereas Model 3 is not adding any value over Model 2. The VIF measure of Model 2 also looks better as compared to other models.
+
+### Diagnostic Plots
+
+Lets look at Model 2 diagnostic plots
+
+```{r diagPlots}
+par(mfrow  = c(2,2))
+plot(fit2)
+```
+
+Examining the assumptions of Linear Regression through diagnostic plots:
+
+-   Linearity and Independence of Residuals - In the Residual Plot, we don't observe a particular pattern, so we can say that the residuals are linear and independent. The data can be said to be random
+
+-   Normal distribution of Residuals - In the Q-Q plot, we can see that the residuals are roughly on a straight line, meaning the residuals are normally distributed
+
+-   Equal variance of residuals - In the Scale-Location plot, the residuals seem equally spread around the horizontal line, suggesting homoscedasticity
+
+Also - In the Residuals v/s Leverage plot, we don't see a point beyond the Cook's distance, indicating there isn't any influential data point that's affecting the regression estimate drastically
+
+## Conclusion
+
+We selected Model 2 that explains 85% of the variability in mpg considering transmission type, no of cylinders, horsepower and weight as the predictors. Based on this model, on average, a car with Manual transmission gives you 1.478 mpg more mileage than an Automatic car.
+
+**Thus, A Manual transmission is better for MPG over an Automatic one**
+
+## Figures
+
+```{r figs}
+par(mfrow = c(1,1))
+g
+corrplot(cor(mtcars))
+plot(fit2)
+```
